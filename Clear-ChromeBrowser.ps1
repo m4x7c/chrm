@@ -297,7 +297,34 @@ foreach ($chromeProfile in $foundProfiles) {
             Write-Host "[OK] Keeping bookmarks (as requested)" -ForegroundColor Green
         }
 
-        if ($KeepPasswords) {
+        if (-not $KeepPasswords) {
+            # Additional password cleanup - ensure all password-related files are removed
+            Remove-Files $profilePath @("Login Data", "Login Data-journal", "Login Data-shm", "Login Data-wal") "Saved passwords (additional cleanup)"
+            Remove-Files $profilePath @("Password Manager") "Password Manager data"
+            
+            # Clear password-related preferences if they exist
+            if (Test-Path "$profilePath\Preferences") {
+                try {
+                    $prefsContent = Get-Content "$profilePath\Preferences" -Raw | ConvertFrom-Json
+                    
+                    # Remove password manager preferences
+                    if ($prefsContent.profile -and $prefsContent.profile.password_manager) {
+                        $prefsContent.profile.PSObject.Properties.Remove("password_manager")
+                        Write-Host "  [OK] Removed password manager preferences" -ForegroundColor Green
+                    }
+                    if ($prefsContent.credentials_enable_service) {
+                        $prefsContent.PSObject.Properties.Remove("credentials_enable_service")
+                        Write-Host "  [OK] Removed credential service preferences" -ForegroundColor Green
+                    }
+                    
+                    # Save the modified preferences
+                    $prefsContent | ConvertTo-Json -Depth 100 | Set-Content "$profilePath\Preferences"
+                } catch {
+                    Write-Warning "Could not modify password preferences: $_"
+                }
+            }
+            Write-Host "[OK] Saved passwords completely removed" -ForegroundColor Green
+        } else {
             Write-Host "[OK] Keeping saved passwords (as requested)" -ForegroundColor Green
         }
 
@@ -339,6 +366,8 @@ if ($WhatIf) {
     }
     if ($KeepPasswords) {
         Write-Host "[SUCCESS] Saved passwords preserved" -ForegroundColor Green
+    } else {
+        Write-Host "[SUCCESS] Saved passwords completely removed" -ForegroundColor Green
     }
     
     # Ask if user wants to restart Chrome
